@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import personService from './services/persons'
+import ChangeNotification from './components/ChangeNotification'
+import ErrorNotification from './components/ErrorNotification'
 
 const Filter = ({value, handleFilter}) => {
   return(
@@ -21,22 +24,31 @@ const PersonForm = ({nameValue, handleNameChange, numberValue, handleNumberChang
   )
 }
 
-const Persons = ({pers, nFilter}) => {
+const Persons = ({name, number, handleClick, text}) => {
   return(
-    pers.filter((x) => x.name.toLowerCase().includes(nFilter.toLowerCase())).map(y => <p key={y.name}>{y.name} {y.number}</p>)
-  )
+    <p>{name} {number}   
+    <button onClick={handleClick}>
+      {text}
+    </button>
+    </p>)
 }
 
 const App = () => {
-  const [persons, setPersons] = useState([
-    { name: 'Arto Hellas', number: '040-123456' },
-    { name: 'Ada Lovelace', number: '39-44-5323523' },
-    { name: 'Dan Abramov', number: '12-43-234345' },
-    { name: 'Mary Poppendieck', number: '39-23-6423122' }
-  ]) 
+  const [persons, setPersons] = useState([]) 
   const [newName, setNewName] = useState('')
   const [newNumber, setNewNumber] = useState('')
   const [nameFilter, setNameFilter] = useState('')
+  const [changeNotification, setChangeNotification] = useState(null)
+  const [errorNotification, setErrorNotification] = useState(null)
+
+  const hook = () =>{
+    personService
+      .getAll()
+      .then(initialPersons => {
+        setPersons(initialPersons)
+      })
+  }
+  useEffect(hook, [])
 
   const addPerson = (event) => {
     event.preventDefault()
@@ -44,16 +56,41 @@ const App = () => {
       name: newName,
       number: newNumber,
     }
-    const loytyy = persons.filter(x => x.name === newName)
-    if (loytyy.length > 0){
-      window.alert(`${newName} is already added to phonebook`)
+    const loydetty = persons.find(x => x.name === newName)
+    if (typeof(loydetty) !== 'undefined'){
+      if (window.confirm(`${newName} is already added to phonebook, replace the old number with a new one?`)) {
+        personService
+          .update(loydetty.id, personObject)
+          .then(updatedPerson => {
+            setPersons(persons.map( p => 
+              p.id !== loydetty.id ? p : updatedPerson))
+            setChangeNotification(`Changed number of ${updatedPerson.name}`)
+          })
+          .catch(error => {
+            setErrorNotification(`Information of ${newName} has already been removed from server`)
+            personService
+              .getAll()
+              .then(currentPersons => {
+              setPersons(currentPersons)
+              })
+          }) 
+          setTimeout(() => {setErrorNotification(null)}, 3000)
+          setTimeout(() => {setChangeNotification(null)}, 3000)
+      }
     }
     else{
-      setPersons(persons.concat(personObject))
-      setNewName('')
-      setNewNumber('')
+      personService
+        .create(personObject)
+        .then(returnedPerson => {
+          setPersons(persons.concat(returnedPerson))
+          setNewName('')
+          setNewNumber('')
+          setChangeNotification(`Added ${returnedPerson.name}`)
+          })
+      setTimeout(() => {setChangeNotification(null)}, 3000)
     }
   }
+  
 
   const handleNameChange = (event) => {
     setNewName(event.target.value)
@@ -67,11 +104,30 @@ const App = () => {
     setNameFilter(event.target.value)
   }
 
+  const handleRemoveClick = ({name, id}) => {
+    if (window.confirm(`Delete ${name} ?`)){
+      personService
+      .uselessPerson(id)
+      personService
+      .getAll()
+      .then(currentPersons => {
+        setPersons(currentPersons)
+        setChangeNotification(`Removed ${name} from phonebook`)
+      })
+      setTimeout(() => {setChangeNotification(null)}, 3000)
+    }
+  }
+
   return (
     <div>
       <h2>Phonebook</h2>
-
-      <Filter value={nameFilter} handleFilter = {handleNameFilter} />       
+      <ErrorNotification message={errorNotification} />
+      <ChangeNotification message={changeNotification} />
+    
+      <Filter 
+      value={nameFilter} 
+      handleFilter = {handleNameFilter} 
+      />       
       
       <h3>Add a new</h3>
       
@@ -86,7 +142,15 @@ const App = () => {
 
       <h3>Numbers</h3>
 
-      <Persons pers={persons} nFilter={nameFilter}/>
+      {persons.filter((x) => x.name.toLowerCase().includes(nameFilter.toLowerCase())).map(y => 
+        <Persons
+          key={y.id}
+          name={y.name}
+          number={y.number}
+          handleClick={() => handleRemoveClick(y)}
+          text='delete'
+        />
+      )}
   </div>  
   )
 }
